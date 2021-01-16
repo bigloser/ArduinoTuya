@@ -10,7 +10,7 @@
 #endif
 
 #ifndef TUYA_VERSION_DEFAULT
-#define TUYA_VERSION_DEFAULT  "3.1"
+#define TUYA_VERSION_DEFAULT  "3.3"
 #endif
 
 #ifndef TUYA_TIMEOUT
@@ -25,6 +25,7 @@
 #define TUYA_RETRY_COUNT      4
 #endif
 
+//#define TUYA_DEBUG 1
 #ifdef TUYA_DEBUG
  #define DEBUG_PRINT(x)       Serial.print (x)
  #define DEBUG_PRINTDEC(x)    Serial.print (x, DEC)
@@ -40,8 +41,9 @@
 #endif
 
 #define TUYA_BLOCK_LENGTH     16
-#define TUYA_PREFIX_LENGTH    16
-#define TUYA_SUFFIX_LENGTH    8
+#define TUYA_PREFIX_LENGTH    4
+#define TUYA_SUFFIX_LENGTH    4
+#define TUYA_CRC_LENGTH    4
 
 #define ECB 1
 #define CBC 0
@@ -88,8 +90,8 @@ class TuyaDevice {
     MD5Builder _md5;
     WiFiClient _client;
 
-    const byte prefix[16] = { 0, 0, 85, 170, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-    const byte suffix[8]  = { 0, 0, 0, 0, 0, 0, 170, 85 };
+    const byte prefix[4] = { 0, 0, 85, 170};
+    const byte suffix[4]  = { 0, 0, 170, 85 };
 
     String _id;
     String _key;
@@ -102,8 +104,8 @@ class TuyaDevice {
 
     void initGetRequest(JsonDocument &jsonRequest);
     void initSetRequest(JsonDocument &jsonRequest);
-    String createPayload(JsonDocument &jsonRequest, bool encrypt = true);
-    String sendCommand(String &payload, byte command);
+    String createPayload(JsonDocument &jsonRequest);
+    String sendCommand(String &jsonString, byte command);
     
   public:
 

@@ -3,29 +3,36 @@
 // MIT License
 
 #include "ArduinoTuya.h"
+#include <Arduino_CRC32.h>
 
 void TuyaDevice::initGetRequest(JsonDocument &jsonRequest) {
   jsonRequest["gwId"] = _id;  //device id
   jsonRequest["devId"] = _id; //device id
+  jsonRequest.createNestedObject("dps");
+  jsonRequest["uid"] = _id; //device id
+  jsonRequest["t"] = "1610771348";
 }
 
 void TuyaDevice::initSetRequest(JsonDocument &jsonRequest) {
-  jsonRequest["t"] = 0;       //epoch time (required but value doesn't appear to be used)
+  jsonRequest["t"] = 1610771348;
+  jsonRequest["gwId"] = _id;  //device id
   jsonRequest["devId"] = _id; //device id
   jsonRequest.createNestedObject("dps");
   jsonRequest["uid"] = "";    //user id (required but value doesn't appear to be used)
 }
 
-String TuyaDevice::createPayload(JsonDocument &jsonRequest, bool encrypt) {
+String TuyaDevice::createPayload(JsonDocument &jsonRequest) {
 
   // Serialize json request
   String jsonString;
   serializeJson(jsonRequest, jsonString);
-
   DEBUG_PRINT("REQUEST  ");
   DEBUG_PRINTLN(jsonString);
-    
-  if (!encrypt) return jsonString;
+  return jsonString;
+}
+
+
+String TuyaDevice::sendCommand(String &jsonString, byte command) {
 
   // Determine lengths and padding
   const int jsonLength = jsonString.length();
@@ -35,7 +42,6 @@ String TuyaDevice::createPayload(JsonDocument &jsonRequest, bool encrypt) {
   // Allocate encrypted data buffer
   byte cipherData[cipherLength];
 
-  // Use PKCS7 padding mode
   memcpy(cipherData, jsonString.c_str(), jsonLength);
   memset(&cipherData[jsonLength], cipherPadding, cipherPadding);
 
@@ -44,52 +50,72 @@ String TuyaDevice::createPayload(JsonDocument &jsonRequest, bool encrypt) {
     AES_ECB_encrypt(&_aes, &cipherData[i]);
   }
 
-  // Base64 encode encrypted data
-  String base64Data = base64::encode(cipherData, cipherLength, false);
-  
-  // Calculate MD5 hash signature
-  _md5.begin();
-  _md5.add("data=");
-  _md5.add(base64Data);
-  _md5.add("||lpv=");
-  _md5.add(_version);
-  _md5.add("||");
-  _md5.add(_key);
-  _md5.calculate();
-  String md5 = _md5.toString().substring(8, 24);
+  const int payloadLength = cipherLength + (command == 10 ? 0 : 15);
+  uint8_t payload[payloadLength];
 
-  // Create signed payload
-  String payload = String(_version + md5 + base64Data);
-  
-  DEBUG_PRINT("PAYLOAD  ");
-  DEBUG_PRINTLN(payload);
+  if (command != 10) {
+    payload[0] = 51;
+    payload[1] = 46;
+    payload[2] = 51;
+    payload[3] = NULL;
+    payload[4] = NULL;
+    payload[5] = NULL;
+    payload[6] = NULL;
+    payload[7] = NULL;
+    payload[8] = NULL;
+    payload[9] = NULL;
+    payload[10] = NULL;
+    payload[11] = NULL;
+    payload[12] = NULL;
+    payload[13] = NULL;
+    payload[14] = NULL;
+  }
+  memcpy(payload + (command == 10 ? 0 : 15), cipherData, cipherLength);
 
-  return payload;
-}
-
-String TuyaDevice::sendCommand(String &payload, byte command) {
 
   // Attempt to send command at least once
   int tries = 0;
   while (tries++ <= TUYA_RETRY_COUNT) {
-
     // Determine lengths and offsets
-    const int payloadLength = payload.length();
-    const int bodyOffset = TUYA_PREFIX_LENGTH;
-    const int bodyLength = payloadLength + TUYA_SUFFIX_LENGTH;    
-    const int suffixOffset = TUYA_PREFIX_LENGTH + payloadLength;    
-    const int requestLength = TUYA_PREFIX_LENGTH + payloadLength + TUYA_SUFFIX_LENGTH;
+    const int bodyLength = payloadLength + TUYA_CRC_LENGTH + TUYA_SUFFIX_LENGTH;
+    const int requestLength = 4 + 4 + 4 + 4 + payloadLength + 4 + 4;
 
     // Assemble request buffer
     byte request[requestLength];
-    memcpy(request, prefix, 11);
-    request[11] = command;
-    request[12] = (byte) ((bodyLength>>24) & 0xFF);
-    request[13] = (byte) ((bodyLength>>16) & 0xFF);
-    request[14] = (byte) ((bodyLength>> 8) & 0xFF);
-    request[15] = (byte) ((bodyLength>> 0) & 0xFF);
-    memcpy(&request[bodyOffset], payload.c_str(), payloadLength);
-    memcpy(&request[suffixOffset], suffix, TUYA_SUFFIX_LENGTH);
+
+    memcpy(request, prefix, 4);
+    request[4] = (byte) ((tries >> 24) & 0xFF);
+    request[5] = (byte) ((tries >> 16) & 0xFF);
+    request[6] = (byte) ((tries >> 8) & 0xFF);
+    request[7] = (byte) (tries & 0xFF);
+    request[8] = (byte) ((command >> 24) & 0xFF);
+    request[9] = (byte) ((command >> 16) & 0xFF);
+    request[10] = (byte) ((command >> 8) & 0xFF);
+    request[11] = (byte) (command & 0xFF);
+    request[12] = (byte) ((bodyLength >> 24) & 0xFF);
+    request[13] = (byte) ((bodyLength >> 16) & 0xFF);
+    request[14] = (byte) ((bodyLength >> 8) & 0xFF);
+    request[15] = (byte) (bodyLength & 0xFF);
+    memcpy(&request[16], payload, payloadLength);
+
+    Arduino_CRC32 crc32;
+    uint32_t const crc32_res = crc32.calc(payload, 16 + payloadLength);
+
+    request[16 + payloadLength + 0] = (byte)((crc32_res >> 24) & 0xFF);
+    request[16 + payloadLength + 1] = (byte)((crc32_res >> 16) & 0xFF);
+    request[16 + payloadLength + 2] = (byte)((crc32_res >> 8) & 0xFF);
+    request[16 + payloadLength + 3] = (byte)(crc32_res & 0xFF);
+    request[16 + payloadLength + 4] = (byte)0;
+    request[16 + payloadLength + 5] = (byte)0;
+    request[16 + payloadLength + 6] = (byte)170;
+    request[16 + payloadLength + 7] = (byte)85;
+
+    DEBUG_PRINTLN("payloadLength");
+    DEBUG_PRINTLN(payloadLength);
+//    for ( int i = 0; i < requestLength; i++ ) {
+//      DEBUG_PRINTHEX(request[i]);
+//    }
+//    Serial.println();
 
     // Connect to device
     _client.setTimeout(TUYA_TIMEOUT);
@@ -109,12 +135,16 @@ String TuyaDevice::sendCommand(String &payload, byte command) {
     // Wait for socket to be ready for read
     while (_client.connected() && _client.available() < 11) delay(10);
 
-    // Read response prefix   (bytes 1 to 11)
-    byte buffer[11];
-    _client.read(buffer, 11);
+    byte buffer[4096];
+    _client.read(buffer, 4096);
+
+//    for ( int i = 0; i < 200; i++ ) {
+//      DEBUG_PRINTHEX(buffer[i]);
+//    }
+//    Serial.println();
 
     // Check prefix match
-    if (memcmp(prefix, buffer, 11) != 0) {
+    if (memcmp(prefix, buffer, TUYA_PREFIX_LENGTH) != 0) {
       DEBUG_PRINTLN("TUYA PREFIX MISMATCH");
       _error = TUYA_ERROR_PREFIX;
       _client.stop();
@@ -122,54 +152,43 @@ String TuyaDevice::sendCommand(String &payload, byte command) {
       continue;
     }
 
-    // Read response command  (byte 12) (ignored)
-    _client.read(buffer, 1);
+    int idx = 4;
+    int seq = (buffer[idx] << 24) | (buffer[idx + 1] << 16) | (buffer[idx + 2] << 8) | (buffer[idx + 3]);
+    DEBUG_PRINTLN("SEQ");
+    DEBUG_PRINTLN(seq);
 
-    // Read response length   (bytes 13 to 16)
-    _client.read(buffer, 4);
+    idx = 8;
+    int cmd = (buffer[idx] << 24) | (buffer[idx + 1] << 16) | (buffer[idx + 2] << 8) | (buffer[idx + 3]);
+    DEBUG_PRINTLN("cmd");
+    DEBUG_PRINTLN(cmd);
 
-    // Assemble big-endian response length
-    size_t length = (buffer[0]<<24)|(buffer[1]<<16)|(buffer[2]<<8)|(buffer[3])-12;
+    idx = 12;
+    size_t length = (buffer[idx] << 24) | (buffer[idx + 1] << 16) | (buffer[idx + 2] << 8) | (buffer[idx + 3]) - 12;
+    DEBUG_PRINTLN("length");
+    DEBUG_PRINTLN(length);
 
-    // Read response unknown  (bytes 17 to 20) (ignored)
-    _client.read(buffer, 4);
+    idx = 16;
+    int code = (buffer[idx] << 24) | (buffer[idx + 1] << 16) | (buffer[idx + 2] << 8) | (buffer[idx + 3]);
+    DEBUG_PRINTLN("code");
+    DEBUG_PRINTLN(code);
 
-    // Allocate response buffer
-    byte response[length+1];
-    memset(response, 0, length+1);
-
-    // Read response          (bytes 21 to N-8)
-    _client.read(response, length);
-    
-    // Read response suffix   (bytes N-7 to N)
-    _client.read(buffer, 8);
-
-    // Check last four bytes of suffix match
-    if (memcmp(&suffix[4], &buffer[4], 4) != 0) {
-      DEBUG_PRINTLN("TUYA SUFFIX MISMATCH");
-      _error = TUYA_ERROR_SUFFIX;
-      _client.stop();
-      delay(TUYA_RETRY_DELAY);
-      continue;
-    }
-
-    // Check length match
-    if (_client.available() > 0) {
-      DEBUG_PRINTLN("TUYA LENGTH MISMATCH");
-      _error = TUYA_ERROR_LENGTH;
-      _client.stop();
-      delay(TUYA_RETRY_DELAY);
-      continue;
-    }
-
-    // Close connection
     _client.stop();
+
+    int offset = (cmd == 8) ? 15 : 0;
+    idx = 20 + offset;
+    length = length - offset;
+    byte response[length + 1];
+    memset(response, 0, length + 1);
+    memcpy(response, buffer + idx, length);
+    for (int i = 0; i < length; i += TUYA_BLOCK_LENGTH) {
+      AES_ECB_decrypt(&_aes, &response[i]);
+    }
 
     if (length > 0) {
       DEBUG_PRINT("RESPONSE ");
       DEBUG_PRINTLN((const char*)response);
     }
-    
+
     _error = TUYA_OK;
     return String((const char*)response);
   }
@@ -182,11 +201,11 @@ tuya_error_t TuyaDevice::get() {
   // Allocate json objects
   StaticJsonDocument<512> jsonRequest;
   StaticJsonDocument<512> jsonResponse;
-  
+
   // Build request
   initGetRequest(jsonRequest);
-  
-  String payload = createPayload(jsonRequest, false);
+
+  String payload = createPayload(jsonRequest);
 
   String response = sendCommand(payload, 10);
 
@@ -209,20 +228,18 @@ tuya_error_t TuyaDevice::set(bool state) {
 
   // Allocate json object
   StaticJsonDocument<512> jsonRequest;
-  
+
   // Build request
   initSetRequest(jsonRequest);
   jsonRequest["dps"]["1"] = state;    //state
-  jsonRequest["dps"]["2"] = 0;        //delay  
-  
+
   String payload = createPayload(jsonRequest);
- 
+
   String response = sendCommand(payload, 7);
 
   // Check for errors
   if (_error != TUYA_OK) return _error;
-  if (response.length() != 0) return _error = TUYA_ERROR_LENGTH;
-
+ 
   _state = state ? TUYA_ON : TUYA_OFF;
 
   return _error = TUYA_OK;
@@ -262,14 +279,14 @@ tuya_error_t TuyaBulb::setColorHSV(byte h, byte s, byte v) {
 
   // Allocate json object
   StaticJsonDocument<512> jsonRequest;
-  
+
   // Build request
   initSetRequest(jsonRequest);
   jsonRequest["dps"]["5"] = hexColor;
   jsonRequest["dps"]["2"] = "colour";
 
   String payload = createPayload(jsonRequest);
- 
+
   String response = sendCommand(payload, 7);
 
   return _error;
@@ -284,7 +301,7 @@ tuya_error_t TuyaBulb::setWhite(byte brightness, byte temp) {
 
   // Allocate json object
   StaticJsonDocument<512> jsonRequest;
-  
+
   // Build request
   initSetRequest(jsonRequest);
   jsonRequest["dps"]["2"] = "white";
@@ -292,8 +309,8 @@ tuya_error_t TuyaBulb::setWhite(byte brightness, byte temp) {
   jsonRequest["dps"]["4"] = temp;
 
   String payload = createPayload(jsonRequest);
- 
+
   String response = sendCommand(payload, 7);
 
-  return _error;  
+  return _error;
 }
