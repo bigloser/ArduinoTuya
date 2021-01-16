@@ -25,7 +25,7 @@
 #define TUYA_RETRY_COUNT      4
 #endif
 
-//#define TUYA_DEBUG 1
+#define TUYA_DEBUG 1
 #ifdef TUYA_DEBUG
  #define DEBUG_PRINT(x)       Serial.print (x)
  #define DEBUG_PRINTDEC(x)    Serial.print (x, DEC)
@@ -63,6 +63,7 @@
 #include <MD5Builder.h>
 #include <WiFiClient.h>
 #include <ArduinoJson.h>
+#include <Arduino_CRC32.h>
 
 typedef enum
 {
@@ -83,9 +84,7 @@ typedef enum
 } tuya_error_t;
 
 class TuyaDevice {
-
   protected:
-
     AES_ctx _aes;
     MD5Builder _md5;
     WiFiClient _client;
@@ -102,19 +101,16 @@ class TuyaDevice {
     tuya_state_t _state = TUYA_OFF;
     tuya_error_t _error = TUYA_ERROR_UNINIT;
 
-    void initGetRequest(JsonDocument &jsonRequest);
-    void initSetRequest(JsonDocument &jsonRequest);
+    void initRequest(JsonDocument &jsonRequest);
     String createPayload(JsonDocument &jsonRequest);
     String sendCommand(String &jsonString, byte command);
     
   public:
-
-    inline TuyaDevice(const char* id, const char* key, const char* host = NULL, uint16_t port = TUYA_PORT_DEFAULT, const char* version = TUYA_VERSION_DEFAULT) {
+    inline TuyaDevice(const char* id, const char* key, const char* host = NULL, uint16_t port = TUYA_PORT_DEFAULT) {
       _id = String(id);
       _key = String(key);
       _host = host;
       _port = port;
-      _version = String(version);
       AES_init_ctx(&_aes, (uint8_t*) key);
     }
 
@@ -125,32 +121,27 @@ class TuyaDevice {
     tuya_error_t set(bool state);
     tuya_error_t toggle();
 
+  private:
+    inline void cpyBEInt(int n, int offset, byte *dest) {
+      const byte bytes[4] = {(byte) ((n >> 24) & 0xFF), (byte) ((n >> 16) & 0xFF), (byte) ((n >> 8) & 0xFF), (byte) (n & 0xFF)};
+      memcpy(&dest[offset], bytes, 4);
+    }
 };
 
 class TuyaPlug : public TuyaDevice {
-  
   public:
-  
-    TuyaPlug(const char* id, const char* key, const char* host = NULL, uint16_t port = TUYA_PORT_DEFAULT, const char* version = TUYA_VERSION_DEFAULT) : TuyaDevice(id,key,host,port,version) {}    
-
+    TuyaPlug(const char* id, const char* key, const char* host = NULL, uint16_t port = TUYA_PORT_DEFAULT) : TuyaDevice(id,key,host,port) {}    
 };
 
 class TuyaBulb : public TuyaDevice {
-  
-  public:
-  
-    TuyaBulb(const char* id, const char* key, const char* host = NULL, uint16_t port = TUYA_PORT_DEFAULT, const char* version = TUYA_VERSION_DEFAULT) : TuyaDevice(id,key,host,port,version) {}
-    
-    tuya_error_t setColorRGB(byte r, byte g, byte b);
-    tuya_error_t setColorHSV(byte h, byte s, byte v);
-    tuya_error_t setWhite(byte brightness, byte temp);
+  public:  
+    TuyaBulb(const char* id, const char* key, const char* host = NULL, uint16_t port = TUYA_PORT_DEFAULT) : TuyaDevice(id,key,host,port) {}
 
-  private:
-
-    inline byte asByte(float n) { return n <= 0.0 ? 0 : floor(n >= 1.0 ? 255 : n * 256.f); }
-    inline float asFloat(byte n) { return n * (1.f/255.f); }        
-    inline float step(float e, float x) { return x < e ? 0.0 : 1.0; }
-    inline float mix(float a, float b, float t) { return a + (b - a) * t; }
+//  private:
+//    inline byte asByte(float n) { return n <= 0.0 ? 0 : floor(n >= 1.0 ? 255 : n * 256.f); }
+//    inline float asFloat(byte n) { return n * (1.f/255.f); }        
+//    inline float step(float e, float x) { return x < e ? 0.0 : 1.0; }
+//    inline float mix(float a, float b, float t) { return a + (b - a) * t; }
 
 };
 
