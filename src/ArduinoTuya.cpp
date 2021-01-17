@@ -68,8 +68,8 @@ String TuyaDevice::sendCommand(String &jsonString, byte command) {
     _client.write(request, requestLength);
     while (_client.connected() && _client.available() < 20) delay(10);
 
-    byte buffer[4096];
-    _client.read(buffer, 4096);
+    byte buffer[20];
+    _client.read(buffer, 20);
 
     //    for ( int i = 0; i < 200; i++ ) {
     //      DEBUG_PRINTHEX(buffer[i]);
@@ -104,25 +104,32 @@ String TuyaDevice::sendCommand(String &jsonString, byte command) {
     DEBUG_PRINT("RETURN CODE: ");
     DEBUG_PRINTLN(code);
 
-    _client.stop();
-
-    const int offset = (cmd == 8) ? 15 : 0;
-    idx = 20 + offset;
-    length = length - offset;
-    byte response[length + 1];
-    memset(response, 0, length + 1);
-    memcpy(response, buffer + idx, length);
-    for (int i = 0; i < length; i += TUYA_BLOCK_LENGTH) {
-      AES_ECB_decrypt(&_aes, &response[i]);
-    }
+    String resp_string("");
 
     if (length > 0) {
+      while (_client.connected() && _client.available() < length) delay(10);
+
+      byte resp_buffer[length + 1];
+      _client.read(resp_buffer, length);
+
+      const int offset = (cmd == 8) ? 15 : 0;
+      for (int i = offset; i < (length - offset); i += TUYA_BLOCK_LENGTH) {
+        AES_ECB_decrypt(&_aes, &resp_buffer[i]);
+      }
+
+      byte response[length + 1 - offset];
+      memcpy(response, resp_buffer + offset, length - offset);
+      resp_string = String((const char*)response);
       DEBUG_PRINT("RESPONSE ");
-      DEBUG_PRINTLN((const char*)response);
+      DEBUG_PRINTLN(resp_string);
+    } else {
+      DEBUG_PRINTLN("EMPTY RESPONSE");
     }
 
+    _client.stop();
+
     _error = TUYA_OK;
-    return String((const char*)response);
+    return resp_string;
   }
 
   return String("");
