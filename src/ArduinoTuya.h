@@ -45,10 +45,6 @@
 #define TUYA_SUFFIX_LENGTH    4
 #define TUYA_CRC_LENGTH    4
 
-#define ECB 1
-#define CBC 0
-#define CTR 0
-
 #ifndef ARDUINO
  #include <stdint.h>
 #elif ARDUINO >= 100
@@ -136,13 +132,15 @@ class TuyaPlug : public TuyaDevice {
 class TuyaBulb : public TuyaDevice {
   public:  
     TuyaBulb(const char* id, const char* key, const char* host = NULL, uint16_t port = TUYA_PORT_DEFAULT) : TuyaDevice(id,key,host,port) {}
+    tuya_error_t setColorRGB(byte r, byte g, byte b);
+    tuya_error_t setColorHSV(byte h, byte s, byte v);
+    tuya_error_t setWhite(byte brightness, byte temp);
 
-//  private:
-//    inline byte asByte(float n) { return n <= 0.0 ? 0 : floor(n >= 1.0 ? 255 : n * 256.f); }
-//    inline float asFloat(byte n) { return n * (1.f/255.f); }        
-//    inline float step(float e, float x) { return x < e ? 0.0 : 1.0; }
-//    inline float mix(float a, float b, float t) { return a + (b - a) * t; }
-
+  private:
+    inline byte asByte(float n) { return n <= 0.0 ? 0 : floor(n >= 1.0 ? 255 : n * 256.f); }
+    inline float asFloat(byte n) { return n * (1.f / 255.f); }
+    inline float step(float e, float x) { return x < e ? 0.0 : 1.0; }
+    inline float mix(float a, float b, float t) { return a + (b - a) * t; }
 };
 
 #endif

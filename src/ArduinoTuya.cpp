@@ -25,14 +25,14 @@ String TuyaDevice::sendCommand(String &jsonString, byte command) {
     payload[0] = 51;
     payload[1] = 46;
     payload[2] = 51;
-    memset(&payload[3], NULL, 12);
+    memset(&payload[3], '\0', 12);
   }
   memcpy(&payload[command == 10 ? 0 : 15], cipherData, cipherLength);
 
   int tries = 0;
   while (tries++ <= TUYA_RETRY_COUNT) {
-    const int bodyLength = payloadLength + TUYA_CRC_LENGTH + TUYA_SUFFIX_LENGTH;
-    const int requestLength = TUYA_PREFIX_LENGTH + 3 * 4 + bodyLength;
+    const unsigned int bodyLength = payloadLength + TUYA_CRC_LENGTH + TUYA_SUFFIX_LENGTH;
+    const unsigned int requestLength = TUYA_PREFIX_LENGTH + 3 * 4 + bodyLength;
 
     byte request[requestLength];
 
@@ -95,7 +95,8 @@ String TuyaDevice::sendCommand(String &jsonString, byte command) {
     DEBUG_PRINTLN(cmd);
 
     idx = 12;
-    size_t length = (buffer[idx] << 24) | (buffer[idx + 1] << 16) | (buffer[idx + 2] << 8) | (buffer[idx + 3]) - 12;
+    int length = (buffer[idx] << 24) | (buffer[idx + 1] << 16) | (buffer[idx + 2] << 8) | (buffer[idx + 3]);
+    length -= 12;
     DEBUG_PRINT("LENGTH: ");
     DEBUG_PRINTLN(length);
 
@@ -166,6 +167,58 @@ tuya_error_t TuyaDevice::set(bool state) {
 
 tuya_error_t TuyaDevice::toggle() {
   return set(!_state);
+}
+
+tuya_error_t TuyaBulb::setColorRGB(byte r, byte g, byte b)
+{
+  //https://gist.github.com/postspectacular/2a4a8db092011c6743a7
+  float R = asFloat(r);
+  float G = asFloat(g);
+  float B = asFloat(b);
+  float s = step(B, G);
+  float px = mix(B, G, s);
+  float py = mix(G, B, s);
+  float pz = mix(-1.0, 0.0, s);
+  float pw = mix(0.6666666, -0.3333333, s);
+  s = step(px, R);
+  float qx = mix(px, R, s);
+  float qz = mix(pw, pz, s);
+  float qw = mix(R, px, s);
+  float d = qx - min(qw, py);
+  float H = abs(qz + (qw - py) / (6.0 * d + 1e-10));
+  float S = d / (qx + 1e-10);
+  float V = qx;
+  return setColorHSV(asByte(H), asByte(S), asByte(V));
+}
+
+tuya_error_t TuyaBulb::setColorHSV(byte h, byte s, byte v)
+{
+  char hexColor[7];
+  sprintf(hexColor, "%02x%02x%02x", h, s, v);
+  StaticJsonDocument<512> jsonRequest;
+  initRequest(jsonRequest);
+  jsonRequest["dps"]["5"] = hexColor;
+  jsonRequest["dps"]["2"] = "colour";
+  String payload = createPayload(jsonRequest);
+  String response = sendCommand(payload, 7);
+  return _error;
+}
+
+tuya_error_t TuyaBulb::setWhite(byte brightness, byte temp)
+{
+  if (brightness < 25 || brightness > 255)
+  {
+    DEBUG_PRINTLN("BRIGHTNESS MUST BE BETWEEN 25 AND 255");
+    return _error = TUYA_ERROR_ARGS;
+  }
+  StaticJsonDocument<512> jsonRequest;
+  initRequest(jsonRequest);
+  jsonRequest["dps"]["2"] = "white";
+  jsonRequest["dps"]["3"] = brightness;
+  jsonRequest["dps"]["4"] = temp;
+  String payload = createPayload(jsonRequest);
+  String response = sendCommand(payload, 7);
+  return _error;
 }
 
 void TuyaDevice::initRequest(JsonDocument &jsonRequest) {
