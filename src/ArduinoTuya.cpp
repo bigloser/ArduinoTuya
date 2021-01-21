@@ -53,7 +53,7 @@ String TuyaDevice::sendCommand(String &jsonString, byte command)
     memcpy(&request[TUYA_PREFIX_LENGTH + 3 * 4 + payloadLength + TUYA_CRC_LENGTH], suffix, TUYA_SUFFIX_LENGTH);
 
     DEBUG_PRINT("PAYLOAD LENGTH: ");
-    DEBUG_PRINTLN(payloadLength);
+    DEBUG_PRINTINT(payloadLength);
     //    for ( int i = 0; i < requestLength; i++ ) {
     //      DEBUG_PRINTHEX(request[i]);
     //    }
@@ -95,23 +95,23 @@ String TuyaDevice::sendCommand(String &jsonString, byte command)
     int idx = 4;
     int seq = (buffer[idx] << 24) | (buffer[idx + 1] << 16) | (buffer[idx + 2] << 8) | (buffer[idx + 3]);
     DEBUG_PRINT("SEQ: ");
-    DEBUG_PRINTLN(seq);
+    DEBUG_PRINTINT(seq);
 
     idx = 8;
     int cmd = (buffer[idx] << 24) | (buffer[idx + 1] << 16) | (buffer[idx + 2] << 8) | (buffer[idx + 3]);
     DEBUG_PRINT("CMD: ");
-    DEBUG_PRINTLN(cmd);
+    DEBUG_PRINTINT(cmd);
 
     idx = 12;
     int length = (buffer[idx] << 24) | (buffer[idx + 1] << 16) | (buffer[idx + 2] << 8) | (buffer[idx + 3]);
     length -= 12;
     DEBUG_PRINT("LENGTH: ");
-    DEBUG_PRINTLN(length);
+    DEBUG_PRINTINT(length);
 
     idx = 16;
     int code = (buffer[idx] << 24) | (buffer[idx + 1] << 16) | (buffer[idx + 2] << 8) | (buffer[idx + 3]);
     DEBUG_PRINT("RETURN CODE: ");
-    DEBUG_PRINTLN(code);
+    DEBUG_PRINTINT(code);
 
     String resp_string("");
 
@@ -120,7 +120,7 @@ String TuyaDevice::sendCommand(String &jsonString, byte command)
       while (_client.connected() && _client.available() < length)
         delay(10);
 
-      byte resp_buffer[length + 1];
+      byte resp_buffer[length];
       _client.read(resp_buffer, length);
 
       const int offset = (cmd == 8) ? 15 : 0;
@@ -133,7 +133,7 @@ String TuyaDevice::sendCommand(String &jsonString, byte command)
       memcpy(response, resp_buffer + offset, length - offset);
       resp_string = String((const char *)response);
       DEBUG_PRINT("RESPONSE ");
-      DEBUG_PRINTLN(resp_string);
+      DEBUG_PRINTLN(resp_string.c_str());
     }
     else
     {
@@ -281,6 +281,6 @@ String TuyaDevice::createPayload(JsonDocument &jsonRequest)
   String jsonString;
   serializeJson(jsonRequest, jsonString);
   DEBUG_PRINT("REQUEST  ");
-  DEBUG_PRINTLN(jsonString);
+  DEBUG_PRINTLN(jsonString.c_str());
   return jsonString;
 }

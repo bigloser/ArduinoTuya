@@ -27,17 +27,13 @@
 
 #define TUYA_DEBUG 1
 #ifdef TUYA_DEBUG
- #define DEBUG_PRINT(x)       Serial.print (x)
- #define DEBUG_PRINTDEC(x)    Serial.print (x, DEC)
- #define DEBUG_PRINTHEX(x)    Serial.print (x, HEX)
- #define DEBUG_PRINTLN(x)     Serial.println (x)
- #define DEBUG_PRINTJSON(x)   serializeJson(doc, Serial);Serial.println()
+ #define DEBUG_PRINT(x)       _print(x)
+ #define DEBUG_PRINTLN(x) _println(x)
+ #define DEBUG_PRINTINT(x) printint(x)
 #else
  #define DEBUG_PRINT(x)
- #define DEBUG_PRINTDEC(x)
- #define DEBUG_PRINTHEX(x)
  #define DEBUG_PRINTLN(x)
- #define DEBUG_PRINTJSON(x)
+ #define DEBUG_PRINTINT(x)
 #endif
 
 #define TUYA_BLOCK_LENGTH     16
@@ -100,11 +96,14 @@ class TuyaDevice {
     String sendCommand(String &jsonString, byte command);
     
   public:
-    inline TuyaDevice(const char* id, const char* key, const char* host = NULL, uint16_t port = TUYA_PORT_DEFAULT) {
+    inline TuyaDevice(const char *id, const char *key, const char *host, uint16_t port, void (*print)(const char *msg), void (*println)(const char *msg))
+    {
       _id = String(id);
       _key = String(key);
       _host = host;
       _port = port;
+      _print = print;
+      _println = println;
       AES_init_ctx(&_aes, (uint8_t*) key);
     }
 
@@ -117,6 +116,14 @@ class TuyaDevice {
 
   protected:
     void processResponse(JsonDocument &jsonResponse);
+    void (*_print)(const char *msg);
+    void (*_println)(const char *msg);
+    inline void printint(int i)
+    {
+      char tmp[20];
+      itoa(i, tmp, 10);
+      _println(tmp);
+    }
 
   private:
     inline void cpyBEInt(int n, int offset, byte *dest) {
@@ -127,12 +134,12 @@ class TuyaDevice {
 
 class TuyaPlug : public TuyaDevice {
   public:
-    TuyaPlug(const char* id, const char* key, const char* host = NULL, uint16_t port = TUYA_PORT_DEFAULT) : TuyaDevice(id,key,host,port) {}    
+    TuyaPlug(const char *id, const char *key, const char *host, uint16_t port, void (*print)(const char *msg), void (*println)(const char *msg)) : TuyaDevice(id, key, host, port, print, println) {}
 };
 
 class TuyaBulb : public TuyaDevice {
-  public:  
-    TuyaBulb(const char* id, const char* key, const char* host = NULL, uint16_t port = TUYA_PORT_DEFAULT) : TuyaDevice(id,key,host,port) {}
+  public:
+    TuyaBulb(const char *id, const char *key, const char *host, uint16_t port, void (*print)(const char *msg), void (*println)(const char *msg)) : TuyaDevice(id, key, host, port, print, println) {}
     tuya_error_t setColorRGB(byte r, byte g, byte b);
     tuya_error_t setColorHSV(byte h, byte s, byte v);
     tuya_error_t setWhite(byte brightness, byte temp);
