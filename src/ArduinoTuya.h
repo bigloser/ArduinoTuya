@@ -50,8 +50,6 @@
 #elif ARDUINO >= 100
  #include "Arduino.h"
  #include "Print.h"
-#else
- #include "WProgram.h"
 #endif
 
 #include <aes.hpp>
@@ -117,6 +115,9 @@ class TuyaDevice {
     tuya_error_t set(bool state);
     tuya_error_t toggle();
 
+  protected:
+    void processResponse(JsonDocument &jsonResponse);
+
   private:
     inline void cpyBEInt(int n, int offset, byte *dest) {
       const byte bytes[4] = {(byte) ((n >> 24) & 0xFF), (byte) ((n >> 16) & 0xFF), (byte) ((n >> 8) & 0xFF), (byte) (n & 0xFF)};
@@ -136,11 +137,17 @@ class TuyaBulb : public TuyaDevice {
     tuya_error_t setColorHSV(byte h, byte s, byte v);
     tuya_error_t setWhite(byte brightness, byte temp);
 
+  protected:
+    void processResponse(JsonDocument &jsonResponse);
+
   private:
     inline byte asByte(float n) { return n <= 0.0 ? 0 : floor(n >= 1.0 ? 255 : n * 256.f); }
     inline float asFloat(byte n) { return n * (1.f / 255.f); }
     inline float step(float e, float x) { return x < e ? 0.0 : 1.0; }
     inline float mix(float a, float b, float t) { return a + (b - a) * t; }
+    bool _type = true; // colour = 0, white = 1
+    byte _brightness = 0;
+    byte _temp = 0;
 };
 
 #endif
