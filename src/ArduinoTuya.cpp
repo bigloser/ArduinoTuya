@@ -246,25 +246,17 @@ tuya_error_t TuyaBulb::setWhite(byte brightness, byte temp)
     return _error = TUYA_ERROR_ARGS;
   }
 
-  if (_type != 1 || _brightness != brightness || _temp != temp)
-  {
-    StaticJsonDocument<512> jsonRequest;
-    initRequest(jsonRequest);
-    jsonRequest["dps"]["2"] = "white";
-    jsonRequest["dps"]["3"] = brightness;
-    jsonRequest["dps"]["4"] = temp;
-    String payload = createPayload(jsonRequest);
-    String response = sendCommand(payload, 7);
-    _type = 1;
-    _brightness = brightness;
-    _temp = temp;
-    return _error;
-  }
-  else
-  {
-    DEBUG_PRINTLN("COLOR/BRIGHTNESS/TEMPERATURE ALREADY SET, SKIPPING");
-    return TUYA_OK;
-  }
+  StaticJsonDocument<512> jsonRequest;
+  initRequest(jsonRequest);
+  jsonRequest["dps"]["2"] = "white";
+  jsonRequest["dps"]["3"] = brightness;
+  jsonRequest["dps"]["4"] = temp;
+  String payload = createPayload(jsonRequest);
+  String response = sendCommand(payload, 7);
+  _type = 1;
+  _brightness = brightness;
+  _temp = temp;
+  return _error;
 }
 
 void TuyaDevice::initRequest(JsonDocument &jsonRequest)
